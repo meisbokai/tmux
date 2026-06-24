@@ -46,6 +46,11 @@ struct kitty_image {
 	char		 compression; /* o=: 'z'=zlib, 0=none */
 	char		 delete_what; /* d=: delete target (used with a=d) */
 
+	/* Set after this image has been transmitted to a kitty terminal so
+	 * we transmit the payload only once and let the terminal retain the
+	 * placement, rather than re-transmitting on every redraw. */
+	int			transmitted;
+
 	/* Cell size at the time of parsing (from the owning window). */
 	u_int		 xpixel;
 	u_int		 ypixel;
@@ -269,6 +274,18 @@ u_int
 kitty_get_rows(struct kitty_image *ki)
 {
 	return (ki->rows);
+}
+
+int
+kitty_get_transmitted(struct kitty_image *ki)
+{
+	return (ki->transmitted);
+}
+
+void
+kitty_set_transmitted(struct kitty_image *ki, int transmitted)
+{
+	ki->transmitted = transmitted;
 }
 
 /*

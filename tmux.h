@@ -3799,6 +3799,8 @@ void		 kitty_size_in_cells(struct kitty_image *, u_int *, u_int *);
 char		 kitty_get_action(struct kitty_image *);
 u_int		 kitty_get_image_id(struct kitty_image *);
 u_int		 kitty_get_rows(struct kitty_image *);
+int		 kitty_get_transmitted(struct kitty_image *);
+void		 kitty_set_transmitted(struct kitty_image *, int);
 char		*kitty_print(struct kitty_image *, size_t *);
 char		*kitty_delete_all(size_t *);
 #endif

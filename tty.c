@@ -2207,12 +2207,19 @@ tty_cmd_kittyimage(struct tty *tty, const struct tty_ctx *ctx)
 		data = xstrdup(im->fallback);
 		size = strlen(data);
 	} else {
-		/* Re-serialize the kitty image command. */
+		/*
+		 * Transmit-once: kitty terminals retain image placements, so
+		 * send the full payload only the first time and let the
+		 * terminal keep it. Re-transmitting on every redraw wastes
+		 * bandwidth and (with per-redraw delete-all) caused a redraw
+		 * storm.
+		 */
+		if (kitty_get_transmitted(im->data.kitty))
+			return;
 		data = kitty_print(im->data.kitty, &size);
 	}
 
 	if (data != NULL) {
-		log_debug("%s: %zu bytes", __func__, size);
 		tty_region_off(tty);
 		tty_margin_off(tty);
 		tty_cursor(tty, cx + ctx->xoff, cy + ctx->yoff);
@@ -2220,6 +2227,8 @@ tty_cmd_kittyimage(struct tty *tty, const struct tty_ctx *ctx)
 		tty->flags |= TTY_NOBLOCK;
 		tty_add(tty, data, size);
 		tty_invalidate(tty);
+		if (fallback == 0)
+			kitty_set_transmitted(im->data.kitty, 1);
 		free(data);
 	}
 }
