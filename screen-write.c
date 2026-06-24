@@ -2484,9 +2484,14 @@ screen_write_kittyimage(struct screen_write_ctx *ctx, struct kitty_image *ki)
 		tty_write(tty_cmd_kittyimage, &ttyctx);
 	}
 
-	/* Move cursor past the image. */
-	if (kitty_get_rows(ki) > 0)
-		screen_write_cursormove(ctx, 0, s->cy + kitty_get_rows(ki), 0);
+	/*
+	 * Kitty graphics do not advance the cursor (unlike sixel), so we must
+	 * move it past the image ourselves, using the computed cell height
+	 * (im->sy from kitty_size_in_cells) rather than the raw r= field, or
+	 * subsequent output overlaps the image overlay.
+	 */
+	if (im != NULL && im->sy > 0)
+		screen_write_cursormove(ctx, 0, s->cy + im->sy, 0);
 }
 #endif
 
