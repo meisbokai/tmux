@@ -282,6 +282,32 @@ kitty_get_transmitted(struct kitty_image *ki)
 	return (ki->transmitted);
 }
 
+u_int
+kitty_get_more(struct kitty_image *ki)
+{
+	return (ki->more);
+}
+
+/* Append the base64 payload of "src" onto the accumulating "dst". */
+void
+kitty_append(struct kitty_image *dst, struct kitty_image *src)
+{
+	char	*new;
+	size_t	 newlen;
+
+	if (src->encoded == NULL || src->encodedlen == 0)
+		return;
+	newlen = dst->encodedlen + src->encodedlen;
+	new = xmalloc(newlen + 1);
+	if (dst->encoded != NULL && dst->encodedlen != 0)
+		memcpy(new, dst->encoded, dst->encodedlen);
+	memcpy(new + dst->encodedlen, src->encoded, src->encodedlen);
+	new[newlen] = '\0';
+	free(dst->encoded);
+	dst->encoded = new;
+	dst->encodedlen = newlen;
+}
+
 void
 kitty_set_transmitted(struct kitty_image *ki, int transmitted)
 {
@@ -289,41 +315,63 @@ kitty_set_transmitted(struct kitty_image *ki, int transmitted)
 }
 
 /*
- * Serialize a kitty_image back into an APC escape sequence for transmission
- * to the terminal. This recreates the original command that was parsed.
+ * Serialize a kitty_image into a single complete APC for (re-)transmission
+ * to a kitty terminal. The control string is rebuilt from the parsed fields
+ * rather than echoed verbatim so that multi-chunk images (which arrived as
+ * several a=T,m=1 fragments and were accumulated) are re-emitted as one
+ * complete single-chunk transmit.
  */
 char *
 kitty_print(struct kitty_image *ki, size_t *outlen)
 {
+	char	ctrl[128];
+	size_t	 ctrllen, total, pos;
 	char	*out;
-	size_t	 total, pos;
 
-	if (ki == NULL || ki->ctrl == NULL)
+	if (ki == NULL)
 		return (NULL);
 
-	/* Calculate total length: ESC _ G + ctrl + ; + encoded + ESC \ */
-	total = 3 + ki->ctrllen;  /* \033_G + ctrl */
-	if (ki->encoded != NULL && ki->encodedlen > 0) {
-		total += 1 + ki->encodedlen;  /* ; + encoded */
-	}
-	total += 2;  /* \033\\ */
+	/* Rebuild a clean single-chunk control string from the fields. */
+	ctrllen = xsnprintf(ctrl, sizeof ctrl, "a=%c", ki->action);
+	if (ki->image_id != 0)
+		ctrllen += xsnprintf(ctrl + ctrllen, sizeof ctrl - ctrllen,
+		    ",i=%u", ki->image_id);
+	if (ki->format != 0)
+		ctrllen += xsnprintf(ctrl + ctrllen, sizeof ctrl - ctrllen,
+		    ",f=%u", ki->format);
+	if (ki->pixel_w != 0)
+		ctrllen += xsnprintf(ctrl + ctrllen, sizeof ctrl - ctrllen,
+		    ",s=%u", ki->pixel_w);
+	if (ki->pixel_h != 0)
+		ctrllen += xsnprintf(ctrl + ctrllen, sizeof ctrl - ctrllen,
+		    ",v=%u", ki->pixel_h);
+	if (ki->cols != 0)
+		ctrllen += xsnprintf(ctrl + ctrllen, sizeof ctrl - ctrllen,
+		    ",c=%u", ki->cols);
+	if (ki->rows != 0)
+		ctrllen += xsnprintf(ctrl + ctrllen, sizeof ctrl - ctrllen,
+		    ",r=%u", ki->rows);
+	if (ki->compression != 0)
+		ctrllen += xsnprintf(ctrl + ctrllen, sizeof ctrl - ctrllen,
+		    ",o=%c", ki->compression);
+
+	total = 3 + ctrllen + 2;
+	if (ki->encoded != NULL && ki->encodedlen > 0)
+		total += 1 + ki->encodedlen;
 
 	out = xmalloc(total + 1);
 	*outlen = total;
 
-	/* Build the sequence */
 	pos = 0;
 	memcpy(out + pos, "\033_G", 3);
 	pos += 3;
-	memcpy(out + pos, ki->ctrl, ki->ctrllen);
-	pos += ki->ctrllen;
-
+	memcpy(out + pos, ctrl, ctrllen);
+	pos += ctrllen;
 	if (ki->encoded != NULL && ki->encodedlen > 0) {
 		out[pos++] = ';';
 		memcpy(out + pos, ki->encoded, ki->encodedlen);
 		pos += ki->encodedlen;
 	}
-
 	memcpy(out + pos, "\033\\", 2);
 	pos += 2;
 	out[pos] = '\0';
